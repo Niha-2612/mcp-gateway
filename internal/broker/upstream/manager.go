@@ -17,11 +17,11 @@ import (
 
 	mcpv1alpha1 "github.com/Kuadrant/mcp-gateway/api/v1alpha1"
 	"github.com/Kuadrant/mcp-gateway/internal/config"
+	mcpotel "github.com/Kuadrant/mcp-gateway/internal/otel"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
 )
 
@@ -48,7 +48,6 @@ const (
 	notificationToolsListChanged   = "notifications/tools/list_changed"
 	notificationPromptsListChanged = "notifications/prompts/list_changed"
 	gatewayServerID                = "kuadrant/id"
-	brokerTracerName               = "mcp-broker"
 )
 
 type eventType int
@@ -289,7 +288,7 @@ func (man *MCPManager) registerCallbacks() func() {
 func (man *MCPManager) manage(ctx context.Context, event eventType) {
 	man.logger.DebugContext(ctx, "managing connection", "upstream mcp server", man.mcp.ID(), "event type", event)
 
-	ctx, span := otel.Tracer(brokerTracerName).Start(ctx, "mcp-broker.upstream-manage",
+	ctx, span := otel.Tracer(mcpotel.BrokerTracerName).Start(ctx, "mcp-broker.upstream-manage",
 		trace.WithAttributes(
 			attribute.String("component", "mcp-broker"),
 			attribute.String("mcp.server", man.mcp.GetName()),
@@ -304,6 +303,7 @@ func (man *MCPManager) manage(ctx context.Context, event eventType) {
 	if err := man.mcp.Connect(ctx, man.registerCallbacks()); err != nil {
 		err = fmt.Errorf("failed to connect to upstream mcp %s removing tools : %w", man.mcp.ID(), err)
 		man.recordBackendError(span, err)
+		man.logger.ErrorContext(ctx, "connection failed", "upstream mcp server", man.mcp.ID(), "error", err)
 		man.removeAllTools()
 		man.removeAllPrompts()
 		// we call disconnect here as we may have connected but failed to initialize
@@ -508,11 +508,7 @@ func (man *MCPManager) applyBackoff() {
 }
 
 func (man *MCPManager) recordBackendError(span trace.Span, err error) {
-	if !span.IsRecording() {
-		return
-	}
-	span.RecordError(err)
-	span.SetStatus(codes.Error, err.Error())
+	mcpotel.SpanError(span, err, err.Error())
 	span.SetAttributes(
 		attribute.String("error.type", fmt.Sprintf("%T", err)),
 		attribute.String("error_source", "backend"),

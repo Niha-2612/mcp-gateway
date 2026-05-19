@@ -12,6 +12,7 @@ import (
 	"github.com/Kuadrant/mcp-gateway/internal/config"
 	sharedheaders "github.com/Kuadrant/mcp-gateway/internal/headers"
 	internaljwt "github.com/Kuadrant/mcp-gateway/internal/jwt"
+	mcpotel "github.com/Kuadrant/mcp-gateway/internal/otel"
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	eppb "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
 	"go.opentelemetry.io/otel/attribute"
@@ -296,8 +297,7 @@ func (s *ExtProcServer) HandleToolCall(ctx context.Context, mcpReq *MCPRequest) 
 	}
 	if sessionErr := s.validateSession(mcpReq.GetSessionID()); sessionErr != nil {
 		s.Logger.ErrorContext(ctx, "session validation failed", "session", mcpReq.GetSessionID(), "error", sessionErr)
-		span.RecordError(sessionErr)
-		span.SetStatus(codes.Error, sessionErr.Error())
+		mcpotel.SpanError(span, sessionErr, sessionErr.Error())
 		span.SetAttributes(attribute.String("error.type", "invalid_session"))
 		calculatedResponse.WithImmediateResponse(sessionErr.Code(), sessionErr.Error())
 		return calculatedResponse.Build()
@@ -317,16 +317,14 @@ func (s *ExtProcServer) HandleToolCall(ctx context.Context, mcpReq *MCPRequest) 
 		var infoErr error
 		serverInfo, infoErr = s.Broker.GetServerInfo(toolName)
 		if infoErr != nil {
-			infoSpan.RecordError(infoErr)
-			infoSpan.SetStatus(codes.Error, "tool not found")
+			mcpotel.SpanError(infoSpan, infoErr, "tool not found")
 		}
 		infoSpan.End()
 		err = infoErr
 	}
 	if err != nil {
 		s.Logger.DebugContext(ctx, "no server for tool", "toolName", toolName)
-		span.RecordError(err)
-		span.SetStatus(codes.Error, "tool not found")
+		mcpotel.SpanError(span, err, "tool not found")
 		span.SetAttributes(attribute.String("error.type", "tool_not_found"))
 		calculatedResponse.WithImmediateJSONRPCResponse(200,
 			[]*corev3.HeaderValueOption{
@@ -378,8 +376,7 @@ func (s *ExtProcServer) HandleToolCall(ctx context.Context, mcpReq *MCPRequest) 
 	if s.ElicitationEnabled && serverInfo.TokenURLElicitation != nil {
 		elicitInfo, tokenErr := s.resolveUpstreamToken(ctx, mcpReq, serverInfo, headers)
 		if tokenErr != nil {
-			span.RecordError(tokenErr)
-			span.SetStatus(codes.Error, tokenErr.Error())
+			mcpotel.SpanError(span, tokenErr, tokenErr.Error())
 			var routerErr *RouterError
 			if errors.As(tokenErr, &routerErr) {
 				span.SetAttributes(attribute.String("error.type", "client_capability"))
@@ -437,8 +434,7 @@ func (s *ExtProcServer) HandlePromptGet(ctx context.Context, mcpReq *MCPRequest)
 	}
 	if sessionErr := s.validateSession(mcpReq.GetSessionID()); sessionErr != nil {
 		s.Logger.ErrorContext(ctx, "session validation failed", "session", mcpReq.GetSessionID(), "error", sessionErr)
-		span.RecordError(sessionErr)
-		span.SetStatus(codes.Error, sessionErr.Error())
+		mcpotel.SpanError(span, sessionErr, sessionErr.Error())
 		span.SetAttributes(attribute.String("error.type", "invalid_session"))
 		calculatedResponse.WithImmediateResponse(sessionErr.Code(), sessionErr.Error())
 		return calculatedResponse.Build()
@@ -457,16 +453,14 @@ func (s *ExtProcServer) HandlePromptGet(ctx context.Context, mcpReq *MCPRequest)
 		var infoErr error
 		serverInfo, infoErr = s.Broker.GetServerInfoByPrompt(promptName)
 		if infoErr != nil {
-			infoSpan.RecordError(infoErr)
-			infoSpan.SetStatus(codes.Error, "prompt not found")
+			mcpotel.SpanError(infoSpan, infoErr, "prompt not found")
 		}
 		infoSpan.End()
 		err = infoErr
 	}
 	if err != nil {
 		s.Logger.DebugContext(ctx, "no server for prompt", "promptName", promptName)
-		span.RecordError(err)
-		span.SetStatus(codes.Error, "prompt not found")
+		mcpotel.SpanError(span, err, "prompt not found")
 		span.SetAttributes(attribute.String("error.type", "prompt_not_found"))
 		calculatedResponse.WithImmediateJSONRPCResponse(200,
 			[]*corev3.HeaderValueOption{
@@ -510,14 +504,12 @@ func (s *ExtProcServer) routeToUpstream(ctx context.Context, span trace.Span, mc
 		var cacheErr error
 		exists, cacheErr = s.SessionCache.GetSession(ctx, mcpReq.GetSessionID())
 		if cacheErr != nil {
-			cacheSpan.RecordError(cacheErr)
-			cacheSpan.SetStatus(codes.Error, "session cache get failed")
+			mcpotel.SpanError(cacheSpan, cacheErr, "session cache get failed")
 		}
 		cacheSpan.End()
 		if cacheErr != nil {
 			s.Logger.ErrorContext(ctx, "failed to get session from cache", "error", cacheErr)
-			span.RecordError(cacheErr)
-			span.SetStatus(codes.Error, "session cache error")
+			mcpotel.SpanError(span, cacheErr, "session cache error")
 			span.SetAttributes(attribute.String("error.type", "session_cache_error"))
 			calculatedResponse.WithImmediateResponse(500, "internal error")
 			return calculatedResponse.Build()
@@ -538,8 +530,7 @@ func (s *ExtProcServer) routeToUpstream(ctx context.Context, span trace.Span, mc
 				calculatedResponse.WithImmediateResponse(500, "internal error")
 			}
 			s.Logger.ErrorContext(ctx, "failed to get remote mcp server session id", "error", err)
-			span.RecordError(err)
-			span.SetStatus(codes.Error, "session initialization failed")
+			mcpotel.SpanError(span, err, "session initialization failed")
 			span.SetAttributes(attribute.String("error.type", "session_init_error"))
 			return calculatedResponse.Build()
 		}
@@ -552,8 +543,7 @@ func (s *ExtProcServer) routeToUpstream(ctx context.Context, span trace.Span, mc
 	body, err := mcpReq.ToBytes()
 	if err != nil {
 		s.Logger.ErrorContext(ctx, "failed to marshal body to bytes", "error", err)
-		span.RecordError(err)
-		span.SetStatus(codes.Error, "body marshal failed")
+		mcpotel.SpanError(span, err, "body marshal failed")
 		span.SetAttributes(attribute.String("error.type", "marshal_error"))
 		calculatedResponse.WithImmediateResponse(500, "internal error")
 		return calculatedResponse.Build()
@@ -561,8 +551,7 @@ func (s *ExtProcServer) routeToUpstream(ctx context.Context, span trace.Span, mc
 	path, err := serverInfo.Path()
 	if err != nil {
 		s.Logger.ErrorContext(ctx, "failed to parse url for backend", "error", err)
-		span.RecordError(err)
-		span.SetStatus(codes.Error, "path parse failed")
+		mcpotel.SpanError(span, err, "path parse failed")
 		span.SetAttributes(attribute.String("error.type", "path_parse_error"))
 		calculatedResponse.WithImmediateResponse(500, "internal error")
 		return calculatedResponse.Build()
@@ -594,8 +583,7 @@ func (s *ExtProcServer) HandleElicitationResponse(
 	response := NewResponse()
 
 	if sessionErr := s.validateSession(mcpReq.GetSessionID()); sessionErr != nil {
-		span.RecordError(sessionErr)
-		span.SetStatus(codes.Error, sessionErr.Error())
+		mcpotel.SpanError(span, sessionErr, sessionErr.Error())
 		response.WithImmediateResponse(sessionErr.Code(), sessionErr.Error())
 		return response.Build()
 	}
@@ -605,24 +593,21 @@ func (s *ExtProcServer) HandleElicitationResponse(
 	entry, ok, err := s.ElicitationMap.Lookup(ctx, gatewayID)
 	if err != nil {
 		s.Logger.ErrorContext(ctx, "failed to lookup elicitation mapping", "error", err, "gatewayID", gatewayID)
-		span.RecordError(err)
-		span.SetStatus(codes.Error, "elicitation lookup failed")
+		mcpotel.SpanError(span, err, "elicitation lookup failed")
 		response.WithImmediateResponse(500, "internal error")
 		return response.Build()
 	}
 	if !ok {
 		lookupErr := fmt.Errorf("elicitation response for unknown gateway ID: %s", gatewayID)
 		s.Logger.ErrorContext(ctx, "elicitation response for unknown gateway ID", "gatewayID", gatewayID)
-		span.RecordError(lookupErr)
-		span.SetStatus(codes.Error, "unknown elicitation ID")
+		mcpotel.SpanError(span, lookupErr, "unknown elicitation ID")
 		response.WithImmediateResponse(400, "unknown elicitation ID")
 		return response.Build()
 	}
 	if entry.GatewaySessionID != mcpReq.GetSessionID() {
 		mismatchErr := fmt.Errorf("elicitation session mismatch: expected %s, got %s", entry.GatewaySessionID, mcpReq.GetSessionID())
 		s.Logger.ErrorContext(ctx, "elicitation session mismatch", "gatewayID", gatewayID, "expected", entry.GatewaySessionID, "got", mcpReq.GetSessionID())
-		span.RecordError(mismatchErr)
-		span.SetStatus(codes.Error, "session mismatch")
+		mcpotel.SpanError(span, mismatchErr, "session mismatch")
 		response.WithImmediateResponse(403, "session mismatch")
 		return response.Build()
 	}
@@ -633,8 +618,7 @@ func (s *ExtProcServer) HandleElicitationResponse(
 	mcpServerConfig, err := s.RoutingConfig.GetServerConfigByName(entry.ServerName)
 	if err != nil {
 		s.Logger.ErrorContext(ctx, "server not found for elicitation response", "server", entry.ServerName)
-		span.RecordError(err)
-		span.SetStatus(codes.Error, "server not found")
+		mcpotel.SpanError(span, err, "server not found")
 		response.WithImmediateResponse(500, "internal error")
 		return response.Build()
 	}
@@ -646,8 +630,7 @@ func (s *ExtProcServer) HandleElicitationResponse(
 	path, err := mcpServerConfig.Path()
 	if err != nil {
 		s.Logger.ErrorContext(ctx, "failed to parse url for backend", "error", err)
-		span.RecordError(err)
-		span.SetStatus(codes.Error, "path parse failed")
+		mcpotel.SpanError(span, err, "path parse failed")
 		response.WithImmediateResponse(500, "internal error")
 		return response.Build()
 	}
@@ -656,8 +639,7 @@ func (s *ExtProcServer) HandleElicitationResponse(
 	body, err := mcpReq.ToBytes()
 	if err != nil {
 		s.Logger.ErrorContext(ctx, "failed to get bytes for elicitation response", "mcpReqID", mcpReq.ID, "serverName", entry.ServerName)
-		span.RecordError(err)
-		span.SetStatus(codes.Error, "marshal failed")
+		mcpotel.SpanError(span, err, "marshal failed")
 		response.WithImmediateResponse(500, "internal error")
 		return response.Build()
 	}
@@ -760,15 +742,13 @@ func (s *ExtProcServer) initializeMCPSeverSession(ctx context.Context, mcpReq *M
 		initToken, err := s.JWTManager.GenerateBackendInitToken(mcpServerConfig.Hostname)
 		if err != nil {
 			s.Logger.ErrorContext(ctx, "failed to generate backend-init token", "error", err)
-			initSpan.RecordError(err)
-			initSpan.SetStatus(codes.Error, "failed to generate backend-init token")
+			mcpotel.SpanError(initSpan, err, "failed to generate backend-init token")
 			return "", NewRouterErrorf(500, "failed to generate backend-init token: %w", err)
 		}
 		clientHandle, err := s.InitForClient(ctx, s.RoutingConfig.MCPGatewayInternalHostname, initToken, mcpServerConfig, passThroughHeaders, mcpReq.clientElicitation)
 		if err != nil {
 			s.Logger.ErrorContext(ctx, "failed to get remote session ", "error", err)
-			initSpan.RecordError(err)
-			initSpan.SetStatus(codes.Error, "failed to initialize backend session")
+			mcpotel.SpanError(initSpan, err, "failed to initialize backend session")
 			return "", NewRouterErrorf(500, "failed to create session for mcp server: %w", err)
 		}
 		var sessionCloser = func() {
@@ -801,8 +781,7 @@ func (s *ExtProcServer) initializeMCPSeverSession(ctx context.Context, mcpReq *M
 			)
 			_, storeErr := s.SessionCache.AddSession(ctx, mcpReq.GetSessionID(), mcpServerConfig.Name, remoteSessionID)
 			if storeErr != nil {
-				storeSpan.RecordError(storeErr)
-				storeSpan.SetStatus(codes.Error, "session cache store failed")
+				mcpotel.SpanError(storeSpan, storeErr, "session cache store failed")
 			}
 			storeSpan.End()
 			if storeErr != nil {

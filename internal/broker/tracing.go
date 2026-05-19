@@ -5,14 +5,14 @@ import (
 	"fmt"
 	"sync"
 
+	mcpotel "github.com/Kuadrant/mcp-gateway/internal/otel"
 	"github.com/mark3labs/mcp-go/server"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
 )
 
-const brokerTracerName = "mcp-broker"
+const brokerTracerName = mcpotel.BrokerTracerName
 
 var brokerComponentAttr = attribute.String("component", "mcp-broker")
 
@@ -59,8 +59,7 @@ func sessionIDFromContext(ctx context.Context) string {
 }
 
 func recordBrokerError(span trace.Span, err error) {
-	span.RecordError(err)
-	span.SetStatus(codes.Error, err.Error())
+	mcpotel.SpanError(span, err, err.Error())
 	span.SetAttributes(
 		attribute.String("error.type", fmt.Sprintf("%T", err)),
 		attribute.String("error_source", "broker"),

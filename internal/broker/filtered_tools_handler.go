@@ -27,7 +27,7 @@ const allowedCapabilitiesClaimKey = "allowed-capabilities"
 func (broker *mcpBrokerImpl) FilterTools(ctx context.Context, _ any, mcpReq *mcp.ListToolsRequest, mcpRes *mcp.ListToolsResult) {
 	attrs := []attribute.KeyValue{brokerComponentAttr}
 	if sid := sessionIDFromContext(ctx); sid != "" {
-		attrs = append(attrs, attribute.String("mcp.session_id", sid))
+		attrs = append(attrs, attribute.String("mcp.session.id", sid))
 	}
 	ctx, span := brokerTracer().Start(ctx, "mcp-broker.tools-list", trace.WithAttributes(attrs...))
 	defer span.End()
@@ -50,9 +50,7 @@ func (broker *mcpBrokerImpl) FilterTools(ctx context.Context, _ any, mcpReq *mcp
 	tools = broker.removeGatewayMeta(tools)
 	broker.logger.DebugContext(ctx, "FilterTools virtual server result", "output_tools_count", len(tools))
 
-	if span.IsRecording() {
-		span.SetAttributes(attribute.Int("mcp.tools.count", len(tools)))
-	}
+	span.SetAttributes(attribute.Int("mcp.tools.count", len(tools)))
 
 	// ensure we never return nil (would serialize as null instead of [])
 	if tools == nil {

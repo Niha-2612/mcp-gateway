@@ -161,7 +161,7 @@ func NewBroker(logger *slog.Logger, opts ...Option) MCPBroker {
 			attribute.String("mcp.method", string(method)),
 		}
 		if sid := sessionIDFromContext(ctx); sid != "" {
-			attrs = append(attrs, attribute.String("mcp.session_id", sid))
+			attrs = append(attrs, attribute.String("mcp.session.id", sid))
 		}
 		spanTracker.start(ctx, id, "mcp-broker.handle-request", attrs...)
 		mcpBkr.logger.DebugContext(ctx, "processing request", "method", method)
@@ -177,10 +177,8 @@ func NewBroker(logger *slog.Logger, opts ...Option) MCPBroker {
 		mcpBkr.logger.ErrorContext(ctx, "mcp server error", "method", method, "error", err)
 		span, ok := spanTracker.remove(id)
 		if ok {
-			if span.IsRecording() {
-				recordBrokerError(span, err)
-				span.SetAttributes(attribute.String("mcp.method", string(method)))
-			}
+			recordBrokerError(span, err)
+			span.SetAttributes(attribute.String("mcp.method", string(method)))
 			span.End()
 		}
 	})
