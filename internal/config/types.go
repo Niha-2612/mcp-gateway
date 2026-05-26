@@ -94,6 +94,7 @@ type MCPServer struct {
 	Prefix              string                     `json:"prefix,omitempty"              yaml:"prefix,omitempty"`
 	Auth                *AuthConfig                `json:"auth,omitempty"                yaml:"auth,omitempty"`
 	Credential          string                     `json:"credential,omitempty"          yaml:"credential,omitempty"`
+	CACert              string                     `json:"caCert,omitempty"              yaml:"caCert,omitempty"`
 	State               string                     `json:"state"                         yaml:"state"`
 	TokenURLElicitation *TokenURLElicitationConfig `json:"tokenURLElicitation,omitempty" yaml:"tokenURLElicitation,omitempty"`
 	Category            []string                   `json:"category,omitempty"            yaml:"category,omitempty"`
@@ -124,6 +125,7 @@ func (mcpServer *MCPServer) ConfigChanged(existingConfig MCPServer) bool {
 		existingConfig.Prefix != mcpServer.Prefix ||
 		existingConfig.Hostname != mcpServer.Hostname ||
 		existingConfig.Credential != mcpServer.Credential ||
+		existingConfig.CACert != mcpServer.CACert ||
 		normalizeState(existingConfig.State) != normalizeState(mcpServer.State) ||
 		existingConfig.Hint != mcpServer.Hint ||
 		tokenURLElicitationChanged(mcpServer.TokenURLElicitation, existingConfig.TokenURLElicitation) {

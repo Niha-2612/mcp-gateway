@@ -352,6 +352,31 @@ kind-load-conformance-server: kind build-conformance-server ## Load conformance 
 	@echo "Loading conformance server image into Kind cluster..."
 	$(call load-image,ghcr.io/kuadrant/mcp-gateway/test-conformance-server:latest)
 
+# Build TLS test server Docker image
+.PHONY: build-tls-server
+build-tls-server: ## Build TLS test server Docker image locally
+	@echo "Building TLS test server image..."
+	cd tests/servers/tls-server && $(CONTAINER_ENGINE) build $(CONTAINER_ENGINE_EXTRA_FLAGS) -t ghcr.io/kuadrant/mcp-gateway/test-tls-server:latest .
+
+# Load TLS test server image into Kind cluster
+.PHONY: kind-load-tls-server
+kind-load-tls-server: kind build-tls-server ## Load TLS test server image into Kind cluster
+	@echo "Loading TLS test server image into Kind cluster..."
+	$(call load-image,ghcr.io/kuadrant/mcp-gateway/test-tls-server:latest)
+
+# Deploy TLS test server with cert-manager CA chain
+.PHONY: deploy-tls-test-server
+deploy-tls-test-server: kind-load-tls-server cert-manager-install ## Deploy TLS test server with cert-manager certificates
+	@echo "Setting up cert-manager CA and issuing TLS certificate..."
+	$(KUBECTL) apply -f config/test-servers/namespace.yaml
+	$(KUBECTL) apply -f config/test-servers/tls-server-cert-manager.yaml
+	@$(KUBECTL) wait --for=condition=Ready certificate/private-ca -n cert-manager --timeout=60s
+	@$(KUBECTL) wait --for=condition=Ready certificate/tls-test-server-cert -n mcp-test --timeout=60s
+	@echo "Deploying TLS test server..."
+	$(KUBECTL) apply -f config/test-servers/tls-server-deployment.yaml
+	@$(KUBECTL) wait --for=condition=available --timeout=120s deployment/mcp-tls-server -n mcp-test
+	@echo "TLS test server ready"
+
 # Deploy everything server only (for local dev)
 deploy-everything-server: kind-load-everything-server ## Deploy only the everything server for local dev
 	@echo "Deploying everything server..."

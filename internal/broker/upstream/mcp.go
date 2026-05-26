@@ -2,7 +2,10 @@ package upstream
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"fmt"
+	"net/http"
 	"sync"
 
 	mcpv1alpha1 "github.com/Kuadrant/mcp-gateway/api/v1alpha1"
@@ -40,6 +43,31 @@ func NewUpstreamMCP(config *config.MCPServer) *MCPServer {
 	return up
 }
 
+// buildHTTPClient creates a custom HTTP client with the configured CA certificate
+// appended to the system root pool. Returns nil if no CACert is configured.
+func (up *MCPServer) buildHTTPClient() (*http.Client, error) {
+	if up.CACert == "" {
+		return nil, nil //nolint:nilnil // nil client signals caller to use default transport
+	}
+
+	rootCAs, err := x509.SystemCertPool()
+	if err != nil {
+		rootCAs = x509.NewCertPool()
+	}
+
+	if !rootCAs.AppendCertsFromPEM([]byte(up.CACert)) {
+		return nil, fmt.Errorf("failed to parse CA certificate PEM for upstream %s", up.Name)
+	}
+
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.TLSClientConfig = &tls.Config{
+		MinVersion: tls.VersionTLS12,
+		RootCAs:    rootCAs,
+	}
+
+	return &http.Client{Transport: transport}, nil
+}
+
 // GetConfig return the config for the backend mcp server
 func (up *MCPServer) GetConfig() config.MCPServer {
 	var cat []string
@@ -54,6 +82,7 @@ func (up *MCPServer) GetConfig() config.MCPServer {
 		State:               up.State,
 		Hostname:            up.Hostname,
 		Credential:          up.Credential,
+		CACert:              up.CACert,
 		TokenURLElicitation: up.TokenURLElicitation,
 		Category:            cat,
 		Hint:                up.Hint,
@@ -106,6 +135,14 @@ func (up *MCPServer) Connect(ctx context.Context, onConnection func()) error {
 	options := []transport.StreamableHTTPCOption{
 		transport.WithContinuousListening(),
 		transport.WithHTTPHeaders(up.headers),
+	}
+
+	customClient, err := up.buildHTTPClient()
+	if err != nil {
+		return fmt.Errorf("failed to build HTTP client: %w", err)
+	}
+	if customClient != nil {
+		options = append(options, transport.WithHTTPBasicClient(customClient))
 	}
 
 	httpClient, err := client.NewStreamableHttpClient(up.URL, options...)

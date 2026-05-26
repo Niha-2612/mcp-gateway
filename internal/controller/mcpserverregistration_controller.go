@@ -2,6 +2,8 @@ package controller
 
 import (
 	"context"
+	"crypto/x509"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"net"
@@ -41,6 +43,8 @@ const (
 	ManagedSecretLabel = "mcp.kuadrant.io/secret" //nolint:gosec // not a credential, just a label name
 	// ManagedSecretValue is the required value for the managed secret label
 	ManagedSecretValue = "true"
+	// maxCACertSize is the maximum allowed size for CA certificate PEM data (64 KiB)
+	maxCACertSize = 64 * 1024
 	// HTTPRouteIndex used to find MCPServerRegistrations
 	HTTPRouteIndex = "spec.targetRef.httproute"
 	// ProgrammedHTTPRouteIndex used to find programmed httproutes
@@ -439,6 +443,42 @@ func (r *MCPReconciler) buildMCPServerConfig(ctx context.Context, targetRoute *g
 		serverConfig.Credential = string(val)
 
 	}
+
+	if mcpsr.Spec.CACertSecretRef != nil {
+		caSecret := &corev1.Secret{}
+		err := r.DirectAPIReader.Get(ctx, types.NamespacedName{
+			Name:      mcpsr.Spec.CACertSecretRef.Name,
+			Namespace: mcpsr.Namespace,
+		}, caSecret)
+		if err != nil {
+			if apierrors.IsNotFound(err) {
+				return nil, fmt.Errorf("CA certificate secret %s not found", mcpsr.Spec.CACertSecretRef.Name)
+			}
+			return nil, fmt.Errorf("failed to get CA certificate secret: %w", err)
+		}
+
+		if caSecret.Labels == nil || caSecret.Labels[ManagedSecretLabel] != ManagedSecretValue {
+			return nil, fmt.Errorf("CA certificate secret %s is missing required label %s=%s",
+				mcpsr.Spec.CACertSecretRef.Name, ManagedSecretLabel, ManagedSecretValue)
+		}
+
+		key := mcpsr.Spec.CACertSecretRef.Key
+		if key == "" {
+			key = "ca.crt"
+		}
+		val, ok := caSecret.Data[key]
+		if !ok {
+			return nil, fmt.Errorf("CA certificate secret %s missing key %s", mcpsr.Spec.CACertSecretRef.Name, key)
+		}
+		if len(val) > maxCACertSize {
+			return nil, fmt.Errorf("CA certificate data in secret %s exceeds maximum size (%d bytes)", mcpsr.Spec.CACertSecretRef.Name, maxCACertSize)
+		}
+		if err := validateCACertPEM(val); err != nil {
+			return nil, fmt.Errorf("CA certificate in secret %s is invalid: %w", mcpsr.Spec.CACertSecretRef.Name, err)
+		}
+		serverConfig.CACert = string(val)
+	}
+
 	return &serverConfig, nil
 }
 
@@ -763,6 +803,37 @@ func (r *MCPReconciler) findMCPServerRegistrationsForHTTPRoute(ctx context.Conte
 	return requests
 }
 
+// validateCACertPEM checks that the data contains at least one valid PEM-encoded certificate.
+func validateCACertPEM(data []byte) error {
+	rest := data
+	found := false
+	for {
+		var block *pem.Block
+		block, rest = pem.Decode(rest)
+		if block == nil {
+			break
+		}
+		if block.Type != "CERTIFICATE" {
+			return fmt.Errorf("unexpected PEM block type %q, expected CERTIFICATE", block.Type)
+		}
+		if _, err := x509.ParseCertificate(block.Bytes); err != nil {
+			return fmt.Errorf("failed to parse certificate: %w", err)
+		}
+		found = true
+	}
+	if !found {
+		return fmt.Errorf("no valid PEM certificate blocks found")
+	}
+	return nil
+}
+
+// mcpsrReferencesSecret checks whether a MCPServerRegistration references the named secret
+// via either credentialRef or caCertSecretRef.
+func mcpsrReferencesSecret(spec mcpv1alpha1.MCPServerRegistrationSpec, secretName string) bool {
+	return (spec.CredentialRef != nil && spec.CredentialRef.Name == secretName) ||
+		(spec.CACertSecretRef != nil && spec.CACertSecretRef.Name == secretName)
+}
+
 // findMCPServerRegistrationsForSecret finds MCPServerRegistrations referencing the given secret
 func (r *MCPReconciler) findMCPServerRegistrationsForSecret(ctx context.Context, obj client.Object) []reconcile.Request {
 	secret := obj.(*corev1.Secret)
@@ -777,8 +848,7 @@ func (r *MCPReconciler) findMCPServerRegistrationsForSecret(ctx context.Context,
 	log.Info("findMCPServerRegistrationsForSecret", "total mcpserverregistrations", len(mcpsrList.Items))
 	var requests []reconcile.Request
 	for _, mcpsr := range mcpsrList.Items {
-		// check if references this secret
-		if mcpsr.Spec.CredentialRef != nil && mcpsr.Spec.CredentialRef.Name == secret.Name {
+		if mcpsrReferencesSecret(mcpsr.Spec, secret.Name) {
 			log.Info("findMCPServerRegistrationsForSecret", "requeue", mcpsr.Name)
 			requests = append(requests, reconcile.Request{
 				NamespacedName: types.NamespacedName{

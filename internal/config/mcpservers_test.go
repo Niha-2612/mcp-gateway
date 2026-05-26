@@ -318,6 +318,68 @@ func TestMCPServer_ConfigChanged(t *testing.T) {
 			},
 			expectChanged: false,
 		},
+		{
+			name: "CACert added",
+			current: &MCPServer{
+				Name:     "server1",
+				Prefix:   "s1_",
+				Hostname: "server1.local",
+				CACert:   "-----BEGIN CERTIFICATE-----\nnewcert\n-----END CERTIFICATE-----",
+			},
+			existing: MCPServer{
+				Name:     "server1",
+				Prefix:   "s1_",
+				Hostname: "server1.local",
+			},
+			expectChanged: true,
+		},
+		{
+			name: "CACert removed",
+			current: &MCPServer{
+				Name:     "server1",
+				Prefix:   "s1_",
+				Hostname: "server1.local",
+			},
+			existing: MCPServer{
+				Name:     "server1",
+				Prefix:   "s1_",
+				Hostname: "server1.local",
+				CACert:   "-----BEGIN CERTIFICATE-----\noldcert\n-----END CERTIFICATE-----",
+			},
+			expectChanged: true,
+		},
+		{
+			name: "CACert changed",
+			current: &MCPServer{
+				Name:     "server1",
+				Prefix:   "s1_",
+				Hostname: "server1.local",
+				CACert:   "-----BEGIN CERTIFICATE-----\nnewcert\n-----END CERTIFICATE-----",
+			},
+			existing: MCPServer{
+				Name:     "server1",
+				Prefix:   "s1_",
+				Hostname: "server1.local",
+				CACert:   "-----BEGIN CERTIFICATE-----\noldcert\n-----END CERTIFICATE-----",
+			},
+			expectChanged: true,
+		},
+		{
+			name: "CACert unchanged",
+			current: &MCPServer{
+				Name:     "server1",
+				Prefix:   "s1_",
+				Hostname: "server1.local",
+				CACert:   "-----BEGIN CERTIFICATE-----\nsamecert\n-----END CERTIFICATE-----",
+			},
+			existing: MCPServer{
+				Name:     "server1",
+				Prefix:   "s1_",
+				Hostname: "server1.local",
+				CACert:   "-----BEGIN CERTIFICATE-----\nsamecert\n-----END CERTIFICATE-----",
+			},
+			expectChanged: false,
+		},
 	}
 
 	for _, tc := range testCases {

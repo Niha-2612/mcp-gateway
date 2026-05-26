@@ -38,6 +38,8 @@ type TestResourcesBuilder struct {
 	hint                string
 	credential          *corev1.Secret
 	credentialKey       string
+	caCertSecretRef     *mcpv1alpha1.CACertSecretReference
+	sectionName         string
 	tokenURLElicitation *mcpv1alpha1.TokenURLElicitationConfig
 	httpRoute           *gatewayapiv1.HTTPRoute
 	mcpServer           *mcpv1alpha1.MCPServerRegistration
@@ -168,6 +170,18 @@ func (b *TestResourcesBuilder) WithTokenURLElicitation(url string) *TestResource
 	return b
 }
 
+// WithCACertSecretRef sets the CA certificate secret reference for TLS connections to the upstream
+func (b *TestResourcesBuilder) WithCACertSecretRef(name, key string) *TestResourcesBuilder {
+	b.caCertSecretRef = &mcpv1alpha1.CACertSecretReference{Name: name, Key: key}
+	return b
+}
+
+// WithSectionName sets the Gateway listener section name on the HTTPRoute parentRef
+func (b *TestResourcesBuilder) WithSectionName(name string) *TestResourcesBuilder {
+	b.sectionName = name
+	return b
+}
+
 // Build constructs all the resources based on configuration. Must be called before GetObjects() or Register().
 func (b *TestResourcesBuilder) Build() *TestResourcesBuilder {
 	routeName := UniqueName("e2e-route-" + b.testName)
@@ -205,6 +219,9 @@ func (b *TestResourcesBuilder) Build() *TestResourcesBuilder {
 			Name: b.credential.Name,
 			Key:  b.credentialKey,
 		}
+	}
+	if b.caCertSecretRef != nil {
+		b.mcpServer.Spec.CACertSecretRef = b.caCertSecretRef
 	}
 	if b.tokenURLElicitation != nil {
 		b.mcpServer.Spec.TokenURLElicitation = b.tokenURLElicitation
@@ -255,6 +272,14 @@ func (b *TestResourcesBuilder) buildInternalResources(routeName string) {
 		}
 	}
 
+	parentRef := gatewayapiv1.ParentReference{
+		Name:      gatewayapiv1.ObjectName(b.gatewayName),
+		Namespace: (*gatewayapiv1.Namespace)(&b.gatewayNamespace),
+	}
+	if b.sectionName != "" {
+		parentRef.SectionName = (*gatewayapiv1.SectionName)(&b.sectionName)
+	}
+
 	b.httpRoute = &gatewayapiv1.HTTPRoute{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      routeName,
@@ -263,12 +288,7 @@ func (b *TestResourcesBuilder) buildInternalResources(routeName string) {
 		},
 		Spec: gatewayapiv1.HTTPRouteSpec{
 			CommonRouteSpec: gatewayapiv1.CommonRouteSpec{
-				ParentRefs: []gatewayapiv1.ParentReference{
-					{
-						Name:      gatewayapiv1.ObjectName(b.gatewayName),
-						Namespace: (*gatewayapiv1.Namespace)(&b.gatewayNamespace),
-					},
-				},
+				ParentRefs: []gatewayapiv1.ParentReference{parentRef},
 			},
 			Hostnames: []gatewayapiv1.Hostname{
 				gatewayapiv1.Hostname(b.hostname),
@@ -331,6 +351,14 @@ func (b *TestResourcesBuilder) buildExternalResources(routeName string) {
 		},
 	}
 
+	parentRef := gatewayapiv1.ParentReference{
+		Name:      gatewayapiv1.ObjectName(b.gatewayName),
+		Namespace: (*gatewayapiv1.Namespace)(&b.gatewayNamespace),
+	}
+	if b.sectionName != "" {
+		parentRef.SectionName = (*gatewayapiv1.SectionName)(&b.sectionName)
+	}
+
 	b.httpRoute = &gatewayapiv1.HTTPRoute{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      routeName,
@@ -339,12 +367,7 @@ func (b *TestResourcesBuilder) buildExternalResources(routeName string) {
 		},
 		Spec: gatewayapiv1.HTTPRouteSpec{
 			CommonRouteSpec: gatewayapiv1.CommonRouteSpec{
-				ParentRefs: []gatewayapiv1.ParentReference{
-					{
-						Name:      gatewayapiv1.ObjectName(b.gatewayName),
-						Namespace: (*gatewayapiv1.Namespace)(&b.gatewayNamespace),
-					},
-				},
+				ParentRefs: []gatewayapiv1.ParentReference{parentRef},
 			},
 			Hostnames: []gatewayapiv1.Hostname{
 				gatewayapiv1.Hostname(b.hostname),

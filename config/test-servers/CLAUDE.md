@@ -11,3 +11,4 @@ Test servers in `config/test-servers/`:
 - **Everything Server**: TypeScript SDK (prompts, tools, resources, sampling)
 - **Conformance Server**: TypeScript SDK conformance test server
 - **Custom Response Server**: Tests custom response handling
+- **TLS Server**: Go SDK with native TLS support (tools: echo_tls, tls_info). Requires cert-manager; deployed via `make deploy-tls-test-server`

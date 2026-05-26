@@ -12,6 +12,7 @@
     - [MCP Server Configuration](./register-mcp-servers.md)
     - [Virtual MCP Servers](./virtual-mcp-servers.md)
     - [External MCP Servers](./external-mcp-server.md)
+    - [Custom CA Certificates](./custom-ca-certificates.md)
 - [Authentication](./authentication.md)
 - [Authorization](./authorization.md)
 - [URL Elicitation](./url-elicitation.md)

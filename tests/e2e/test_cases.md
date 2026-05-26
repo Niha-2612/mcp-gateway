@@ -297,6 +297,14 @@
 
 - When the `category` or `hint` fields on a live MCPServerRegistration are updated, the controller should re-reconcile and the broker should reflect the new metadata in subsequent `discover_tools` calls. The old category should no longer match.
 
+### [Happy] Test broker connects to TLS upstream with custom CA certificate
+
+- When an MCPServerRegistration has a `caCertSecretRef` pointing to a valid CA certificate Secret and the upstream MCP server terminates TLS with a certificate signed by that CA, the broker should successfully connect via HTTPS, discover tools, and make them available through the gateway. The test deploys an nginx TLS proxy in front of mcp-test-server2 using a cert-manager private CA, creates a labeled Secret containing the CA certificate, and verifies that tools are listed and can be invoked through the gateway.
+
+### [Negative] Test broker rejects TLS upstream with wrong CA certificate
+
+- When an MCPServerRegistration has a `caCertSecretRef` pointing to a CA certificate that did NOT sign the upstream server's certificate, the broker should fail the TLS handshake and the MCPServerRegistration should be in a not-ready state. No tools with the server's prefix should appear in the tools list.
+
 ## Common pitfalls
 
 - MCPServerRegistrations with empty prefix: `strings.HasPrefix(name, "")` matches all tools, including broker meta-tools (discover_tools, select_tools). Always use a non-empty prefix in tests.

@@ -74,6 +74,26 @@ spec:
           spec:
             description: spec defines the desired state of MCPServerRegistration.
             properties:
+              caCertSecretRef:
+                description: |-
+                  caCertSecretRef references a Secret containing a PEM-encoded CA certificate bundle.
+                  The broker uses this CA to verify TLS connections to the upstream MCP server.
+                  The referenced Secret must have the label mcp.kuadrant.io/secret=true.
+                  If key is not specified, defaults to "ca.crt".
+                properties:
+                  key:
+                    default: ca.crt
+                    description: |-
+                      key is the key within the Secret that contains the CA certificate PEM data.
+                      If not specified, defaults to "ca.crt".
+                    type: string
+                  name:
+                    description: name is the name of the Secret resource.
+                    minLength: 1
+                    type: string
+                required:
+                - name
+                type: object
               category:
                 default:
                 - uncategorised

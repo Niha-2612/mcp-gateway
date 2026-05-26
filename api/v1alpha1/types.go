@@ -83,6 +83,13 @@ type MCPServerRegistrationSpec struct {
 	// +optional
 	// +default="Enabled"
 	State ServerState `json:"state,omitempty"`
+
+	// caCertSecretRef references a Secret containing a PEM-encoded CA certificate bundle.
+	// The broker uses this CA to verify TLS connections to the upstream MCP server.
+	// The referenced Secret must have the label mcp.kuadrant.io/secret=true.
+	// If key is not specified, defaults to "ca.crt".
+	// +optional
+	CACertSecretRef *CACertSecretReference `json:"caCertSecretRef,omitempty"`
 	// tokenURLElicitation enables per-user token collection via URL elicitation.
 	// When set, the router uses the MCP spec's URLElicitationRequiredError (-32042) flow
 	// to collect tokens from capable clients at tool-call time.
@@ -151,6 +158,20 @@ type SecretReference struct {
 	// If not specified, defaults to "token".
 	// +optional
 	// +default="token"
+	Key string `json:"key,omitempty"`
+}
+
+// CACertSecretReference identifies a Secret containing a PEM-encoded CA certificate bundle.
+type CACertSecretReference struct {
+	// name is the name of the Secret resource.
+	// +required
+	// +kubebuilder:validation:MinLength=1
+	Name string `json:"name,omitempty"`
+
+	// key is the key within the Secret that contains the CA certificate PEM data.
+	// If not specified, defaults to "ca.crt".
+	// +optional
+	// +default="ca.crt"
 	Key string `json:"key,omitempty"`
 }
 

@@ -20,6 +20,7 @@ backendtlspolicy
 bahlo
 basepb
 bentito
+bodyclose
 beorn
 BMCP
 BMCPS
@@ -428,3 +429,4 @@ deadbeefcafebabe
 myprompt
 promptname
 rescope
+selfsigned
