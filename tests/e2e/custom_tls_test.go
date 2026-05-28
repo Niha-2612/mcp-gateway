@@ -12,7 +12,6 @@ import (
 	"fmt"
 	"math/big"
 	"os"
-	"strings"
 	"time"
 
 	mcpv1alpha1 "github.com/Kuadrant/mcp-gateway/api/v1alpha1"
@@ -248,6 +247,9 @@ var _ = Describe("HTTPS External Backends", func() {
 			WithParentGateway(GatewayName, GatewayNamespace).
 			Build()
 		testResources = append(testResources, resources.GetObjects()...)
+		for _, obj := range resources.GetObjects() {
+			CleanupResource(ctx, k8sClient, obj)
+		}
 		resources.Register(ctx)
 
 		mcpServer := resources.GetMCPServer()
@@ -272,15 +274,13 @@ var _ = Describe("HTTPS External Backends", func() {
 				Name:      ConfigMapName,
 				Namespace: SystemNamespace,
 			}, secret)).To(Succeed())
-			found := false
-			for _, v := range secret.Data {
-				if strings.Contains(string(v), githubMCPHost) {
-					found = true
-					g.Expect(string(v)).To(ContainSubstring("https://"),
-						"GitHub MCP server should have an https:// URL in config")
-				}
-			}
-			g.Expect(found).To(BeTrue(), "expected to find GitHub MCP host in config")
+			configData, ok := secret.Data["config.yaml"]
+			g.Expect(ok).To(BeTrue(), "config secret should have config.yaml key")
+			configStr := string(configData)
+			g.Expect(configStr).To(ContainSubstring(githubMCPHost),
+				"expected to find GitHub MCP host in config")
+			g.Expect(configStr).To(ContainSubstring("https://"),
+				"GitHub MCP server should have an https:// URL in config")
 		}, TestTimeoutMedium, TestRetryInterval).Should(Succeed())
 	})
 
@@ -300,6 +300,9 @@ var _ = Describe("HTTPS External Backends", func() {
 			WithParentGateway(GatewayName, GatewayNamespace).
 			Build()
 		testResources = append(testResources, resources.GetObjects()...)
+		for _, obj := range resources.GetObjects() {
+			CleanupResource(ctx, k8sClient, obj)
+		}
 		resources.Register(ctx)
 
 		mcpServer := resources.GetMCPServer()
